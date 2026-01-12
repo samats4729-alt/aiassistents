@@ -1,6 +1,7 @@
 import os
 import logging
 import asyncio
+from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, constants
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler, MessageHandler, filters
@@ -53,11 +54,21 @@ async def games_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Better: Use GameID
         game_id = g.get('id') or g.get('gameId')
         
-        home = g.get('homeTeam', {}).get('abbrev', 'H')
-        away = g.get('awayTeam', {}).get('abbrev', 'A')
-        time = g.get('startTimeUTC', '')[11:16] # Extract HH:MM if ISO format
+        # Convert UTC to KZ time (UTC+5)
+        # Format usually: "2023-10-12T23:00:00Z"
+        start_utc = g.get('startTimeUTC', '')
+        time_str = "??"
+        if start_utc:
+            try:
+                # Simple parsing (replacing Z)
+                dt_utc = datetime.fromisoformat(start_utc.replace("Z", "+00:00"))
+                dt_kz = dt_utc.astimezone(timezone(timedelta(hours=5)))
+                time_str = dt_kz.strftime("%H:%M")
+            except Exception as e:
+                # Fallback
+                time_str = start_utc[11:16]
         
-        text = f"{home} vs {away} ({time})"
+        text = f"{home} vs {away} ({time_str} KZ)"
         keyboard.append([InlineKeyboardButton(text, callback_data=f"analyze_{game_id}")])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
