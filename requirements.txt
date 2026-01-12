@@ -1,0 +1,4 @@
+requests
+python-dotenv
+nhl-api-py
+python-telegram-bot
