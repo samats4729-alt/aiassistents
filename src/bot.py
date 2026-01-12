@@ -133,14 +133,31 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     session = get_session(chat_id)
     
+    logging.info(f"Received message from {chat_id}: {text}")
+
     # Check if we have an active AI session
     engine = session.get('engine')
     if engine and hasattr(engine, 'conversation_history') and engine.conversation_history:
         # It's a follow-up question
         await context.bot.send_chat_action(chat_id=chat_id, action=constants.ChatAction.TYPING)
-        response = engine.ask_followup(text)
-        await update.message.reply_text(response, parse_mode=constants.ParseMode.MARKDOWN)
+        
+        try:
+            # Run blocking AI call in executor to not block bot loop
+            loop = asyncio.get_running_loop()
+            response = await loop.run_in_executor(None, engine.ask_followup, text)
+            
+            try:
+                await update.message.reply_text(response, parse_mode=constants.ParseMode.MARKDOWN)
+            except Exception as e:
+                logging.error(f"Markdown error: {e}, sending plain text")
+                await update.message.reply_text(response) # Fallback to plain text
+                
+        except Exception as e:
+            logging.error(f"AI Error: {e}")
+            await update.message.reply_text(f"⚠️ Ошибка получения ответа: {e}")
+            
     else:
+        # If session is lost or fresh
         await update.message.reply_text("Сначала выберите матч через /games 🏒")
 
 if __name__ == '__main__':
