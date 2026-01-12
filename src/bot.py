@@ -37,42 +37,52 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def games_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    session = get_session(chat_id)
-    fetcher = session['fetcher']
     
-    await context.bot.send_message(chat_id=chat_id, text="🔄 Сканирую расписание НХЛ...")
-    
-    games = fetcher.get_games_for_date()
-    
-    if not games:
-        await context.bot.send_message(chat_id=chat_id, text="📅 На сегодня матчей не запланировано.")
-        return
-
-    keyboard = []
-    for g in games:
-        # Use simple ID or Index. Using Index is risky if list changes, but easier for stateless.
-        # Better: Use GameID
-        game_id = g.get('id') or g.get('gameId')
+    try:
+        session = get_session(chat_id)
+        fetcher = session['fetcher']
         
-        # Convert UTC to KZ time (UTC+5)
-        # Format usually: "2023-10-12T23:00:00Z"
-        start_utc = g.get('startTimeUTC', '')
-        time_str = "??"
-        if start_utc:
-            try:
-                # Simple parsing (replacing Z)
-                dt_utc = datetime.fromisoformat(start_utc.replace("Z", "+00:00"))
-                dt_kz = dt_utc.astimezone(timezone(timedelta(hours=5)))
-                time_str = dt_kz.strftime("%H:%M")
-            except Exception as e:
-                # Fallback
-                time_str = start_utc[11:16]
+        await context.bot.send_message(chat_id=chat_id, text="🔄 Сканирую расписание НХЛ...")
         
-        text = f"{home} vs {away} ({time_str} KZ)"
-        keyboard.append([InlineKeyboardButton(text, callback_data=f"analyze_{game_id}")])
+        games = fetcher.get_games_for_date()
+        
+        if not games:
+            await context.bot.send_message(chat_id=chat_id, text="📅 На сегодня матчей не запланировано.")
+            return
 
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await context.bot.send_message(chat_id=chat_id, text="🏒 **Выберите матч для анализа:**", reply_markup=reply_markup, parse_mode=constants.ParseMode.MARKDOWN)
+        keyboard = []
+        for g in games:
+            # Use simple ID or Index. Using Index is risky if list changes, but easier for stateless.
+            # Better: Use GameID
+            game_id = g.get('id') or g.get('gameId')
+            
+            home = g.get('homeTeam', {}).get('abbrev', 'H')
+            away = g.get('awayTeam', {}).get('abbrev', 'A')
+            
+            # Convert UTC to KZ time (UTC+5)
+            # Format usually: "2023-10-12T23:00:00Z"
+            start_utc = g.get('startTimeUTC', '')
+            time_str = "??"
+            if start_utc:
+                try:
+                    # Simple parsing (replacing Z)
+                    dt_utc = datetime.fromisoformat(start_utc.replace("Z", "+00:00"))
+                    dt_kz = dt_utc.astimezone(timezone(timedelta(hours=5)))
+                    time_str = dt_kz.strftime("%H:%M")
+                except Exception as e:
+                    logging.error(f"Time parse error: {e}")
+                    # Fallback
+                    time_str = str(start_utc)[11:16] if len(str(start_utc)) > 16 else "??"
+            
+            text = f"{home} vs {away} ({time_str} KZ)"
+            keyboard.append([InlineKeyboardButton(text, callback_data=f"analyze_{game_id}")])
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await context.bot.send_message(chat_id=chat_id, text="🏒 **Выберите матч для анализа:**", reply_markup=reply_markup, parse_mode=constants.ParseMode.MARKDOWN)
+        
+    except Exception as e:
+        logging.error(f"Error in games_menu: {e}")
+        await context.bot.send_message(chat_id=chat_id, text=f"⚠️ Произошла ошибка: {e}")
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
